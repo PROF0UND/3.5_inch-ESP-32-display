@@ -57,4 +57,7 @@ Documentation for the 3.5 inch ESP 32 display with the SD card.
 #define LOAD_GFXFF
 #define SMOOTH_FONT
 ```
-
+## Example Codes:
+- The [example_codes](./example_codes) folder, you can find a list of example programs that can get you started with development on this board.
+- [Bouncing ball](./example_codes/Bouncing_ball): Creates a red bouncing ball that goes around the screen.
+- [SD_card_file_explorer](./example_codes/SD_card_file_explorer): Explore the files how have on the connected SD card!
