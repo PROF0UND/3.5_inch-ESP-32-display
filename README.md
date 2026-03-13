@@ -16,7 +16,7 @@ Documentation for the 3.5 inch ESP 32 display with the SD card.
 - The Board uses the "ILI9488 Driver".
 - You need to edit the `User_Setup.h` to configure the library to this board.
 - Do this by either uncommenting the following lines or just copy pasting this text on the file.
-### User_sertup.h:
+### User_setup.h:
 - Use these settings in the `User_Setup.h` file of the `TFT_eSPI` library:
 ```
 #define ILI9488_DRIVER
