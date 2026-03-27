@@ -4,6 +4,10 @@
 
 // ====== USER SETTINGS ======
 #define SD_CS 5
+// Set to 1 if red/blue are swapped on your display
+#define BMP_SWAP_RB 0
+// Set to 1 if colors look "garbled" due to byte order
+#define BMP_SWAP_BYTES 0
 // ===========================
 
 TFT_eSPI tft = TFT_eSPI(); // Create display object
@@ -96,7 +100,17 @@ static bool drawBMP(const char *path, int16_t x, int16_t y) {
   uint32_t bMask = 0x000000FF;
   uint32_t aMask = 0xFF000000;
 
+  uint32_t imageSize = read32(bmpFile);
+  (void)read32(bmpFile); // xPixelsPerMeter
+  (void)read32(bmpFile); // yPixelsPerMeter
+  (void)read32(bmpFile); // colorsUsed
+  (void)read32(bmpFile); // importantColors
   if (compression == 3) {
+    // For BITFIELDS, masks are located at fixed offsets inside the DIB header
+    // (right after the first 40 bytes of BITMAPINFOHEADER).
+    const uint32_t dibStart = 14;
+    uint32_t maskPos = dibStart + 40;
+    bmpFile.seek(maskPos);
     rMask = read32(bmpFile);
     gMask = read32(bmpFile);
     bMask = read32(bmpFile);
@@ -106,12 +120,6 @@ static bool drawBMP(const char *path, int16_t x, int16_t y) {
       aMask = 0;
     }
   }
-
-  uint32_t imageSize = read32(bmpFile);
-  (void)read32(bmpFile); // xPixelsPerMeter
-  (void)read32(bmpFile); // yPixelsPerMeter
-  (void)read32(bmpFile); // colorsUsed
-  (void)read32(bmpFile); // importantColors
 
   Serial.println("BMP header:");
   Serial.print("  fileSize="); Serial.println(fileSize);
@@ -130,8 +138,10 @@ static bool drawBMP(const char *path, int16_t x, int16_t y) {
     Serial.print("  aMask=0x"); Serial.println(aMask, HEX);
   }
 
-  bool compressionSupported = (compression == 0) || (depth == 32 && compression == 3);
-  if (planes != 1 || (depth != 24 && depth != 32) || !compressionSupported) {
+  bool compressionSupported =
+      (compression == 0) ||
+      ((depth == 16 || depth == 32) && compression == 3);
+  if (planes != 1 || (depth != 16 && depth != 24 && depth != 32) || !compressionSupported) {
     bmpFile.close();
     showError("BMP unsupported");
     return false;
@@ -148,10 +158,17 @@ static bool drawBMP(const char *path, int16_t x, int16_t y) {
   if (x + w > SCREEN_W) w = SCREEN_W - x;
   if (y + h > SCREEN_H) h = SCREEN_H - y;
 
-  uint8_t bytesPerPixel = (depth == 32) ? 4 : 3;
+  uint8_t bytesPerPixel = (depth == 32) ? 4 : (depth == 16 ? 2 : 3);
   uint32_t rowSize = (bmpWidth * bytesPerPixel + 3) & ~3;
   uint8_t  sdbuffer[4 * 80];
   uint16_t lcdbuffer[80];
+
+  if (depth == 16 && compression == 0) {
+    // Default 16-bit BMP is 5-6-5
+    rMask = 0xF800;
+    gMask = 0x07E0;
+    bMask = 0x001F;
+  }
 
   uint8_t rShift = maskShift(rMask);
   uint8_t gShift = maskShift(gMask);
@@ -181,7 +198,13 @@ static bool drawBMP(const char *path, int16_t x, int16_t y) {
 
       for (int32_t i = 0; i < chunk; i++) {
         uint8_t r, g, b;
-        if (bytesPerPixel == 3) {
+        if (bytesPerPixel == 2) {
+          uint16_t px =  (uint16_t)sdbuffer[i * bytesPerPixel + 0]
+                       | ((uint16_t)sdbuffer[i * bytesPerPixel + 1] << 8);
+          r = scaleTo8((px & rMask) >> rShift, rBits);
+          g = scaleTo8((px & gMask) >> gShift, gBits);
+          b = scaleTo8((px & bMask) >> bShift, bBits);
+        } else if (bytesPerPixel == 3) {
           b = sdbuffer[i * bytesPerPixel + 0];
           g = sdbuffer[i * bytesPerPixel + 1];
           r = sdbuffer[i * bytesPerPixel + 2];
@@ -194,7 +217,15 @@ static bool drawBMP(const char *path, int16_t x, int16_t y) {
           g = scaleTo8((px & gMask) >> gShift, gBits);
           b = scaleTo8((px & bMask) >> bShift, bBits);
         }
+        if (BMP_SWAP_RB) {
+          uint8_t tmp = r;
+          r = b;
+          b = tmp;
+        }
         lcdbuffer[i] = tft.color565(r, g, b);
+        if (BMP_SWAP_BYTES) {
+          lcdbuffer[i] = (uint16_t)((lcdbuffer[i] << 8) | (lcdbuffer[i] >> 8));
+        }
       }
 
       tft.pushImage(x + col, y + row, chunk, 1, lcdbuffer);
