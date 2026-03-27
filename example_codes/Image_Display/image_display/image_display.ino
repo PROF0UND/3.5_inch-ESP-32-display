@@ -7,7 +7,7 @@
 // Set to 1 if red/blue are swapped on your display
 #define BMP_SWAP_RB 0
 // Set to 1 if colors look "garbled" due to byte order
-#define BMP_SWAP_BYTES 0
+#define BMP_SWAP_BYTES 1
 // ===========================
 
 TFT_eSPI tft = TFT_eSPI(); // Create display object
