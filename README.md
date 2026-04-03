@@ -12,6 +12,13 @@ Documentation for the 3.5 inch ESP 32 display with the SD card.
 ## Setup:
 ### Library installation:
 - On Arduino IDE, install the `TFT_eSPI" library.
+## Example Codes:
+The [example_codes](./example_codes) folder, you can find a list of example programs that can get you started with development on this board.
+1. [Bouncing ball](./example_codes/Bouncing_ball): Creates a red bouncing ball that goes around the screen.
+2. [SD_card_file_explorer](./example_codes/SD_card_file_explorer): Explore the files how have on the connected SD card!
+3. [Image_Display](./example_codes/Image_Display/image_display): Displays a BMP image on the screen.
+   1. Use [This converter](https://image.online-convert.com/convert-to-bmp) to turn your image into a 480x320 BMP image.
+   2. Save it as "image.bmp" on your SD card. 
 ### Driver Used:
 - The Board uses the "ILI9488 Driver".
 - You need to edit the `User_Setup.h` to configure the library to this board.
@@ -57,7 +64,4 @@ Documentation for the 3.5 inch ESP 32 display with the SD card.
 #define LOAD_GFXFF
 #define SMOOTH_FONT
 ```
-## Example Codes:
-The [example_codes](./example_codes) folder, you can find a list of example programs that can get you started with development on this board.
-1. [Bouncing ball](./example_codes/Bouncing_ball): Creates a red bouncing ball that goes around the screen.
-2. [SD_card_file_explorer](./example_codes/SD_card_file_explorer): Explore the files how have on the connected SD card!
+
