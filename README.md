@@ -17,6 +17,11 @@ The [example_codes](./example_codes) folder, you can find a list of example prog
    1. Use [This converter](https://image.online-convert.com/convert-to-bmp) to turn your image into a 480x320 BMP image.
    2. Save it as "image.bmp" on your SD card. 
 
+### WiFi_Time_Display config
+- Copy `.env.example` to `.env` for local Wi-Fi values. `.env` is ignored by Git.
+- Arduino IDE does not automatically load `.env` files. To use local values at compile time, copy `example_codes/WiFi_Time_Display/wifi_config.h.example` to `example_codes/WiFi_Time_Display/wifi_config.h` and edit that file.
+- `wifi_config.h` is ignored by Git, so private hotspot passwords stay out of GitHub.
+
 ## Setup:
 ### Library installation:
 - On Arduino IDE, install the `TFT_eSPI" library.

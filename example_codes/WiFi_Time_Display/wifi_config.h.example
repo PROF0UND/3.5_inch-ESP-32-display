@@ -1,0 +1,8 @@
+// Optional local Arduino config.
+// Copy this file to wifi_config.h, edit the values, and keep wifi_config.h out of Git.
+// The .env file is useful for storing the same values, but Arduino IDE does not
+// automatically load .env files during compile/upload.
+
+#define WIFI_SSID "UMBC Visitor"
+#define WIFI_PASSWORD ""
+#define TIMEZONE "EST5EDT,M3.2.0/2,M11.1.0/2"

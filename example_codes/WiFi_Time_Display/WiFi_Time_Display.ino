@@ -4,14 +4,26 @@
 #include <string.h>
 #include <time.h>
 
-TFT_eSPI tft = TFT_eSPI();
+#if __has_include("wifi_config.h")
+#include "wifi_config.h"
+#endif
 
-const char *WIFI_SSID = "UMBC Visitor";
-const char *WIFI_PASSWORD = ""; // Leave empty for open Wi-Fi.
+#ifndef WIFI_SSID
+#define WIFI_SSID "UMBC Visitor"
+#endif
+
+#ifndef WIFI_PASSWORD
+#define WIFI_PASSWORD ""
+#endif
+
+#ifndef TIMEZONE
+#define TIMEZONE "EST5EDT,M3.2.0/2,M11.1.0/2"
+#endif
+
+TFT_eSPI tft = TFT_eSPI();
 
 const char *NTP_SERVER_1 = "pool.ntp.org";
 const char *NTP_SERVER_2 = "time.nist.gov";
-const char *TIMEZONE = "EST5EDT,M3.2.0/2,M11.1.0/2"; // US Eastern time with DST.
 
 const int SCREEN_W = 480;
 const int SCREEN_H = 320;
