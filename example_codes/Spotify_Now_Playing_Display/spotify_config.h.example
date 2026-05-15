@@ -1,0 +1,18 @@
+// Optional local Arduino config.
+// Copy this file to spotify_config.h, edit the values, and keep spotify_config.h out of Git.
+//
+// Use tools/spotify_pkce_helper.py to generate SPOTIFY_REFRESH_TOKEN.
+// In the Spotify Developer Dashboard, add this redirect URI:
+// http://127.0.0.1:8080/callback
+
+#define WIFI_SSID "UMBC Visitor"
+#define WIFI_PASSWORD ""
+
+#define SPOTIFY_CLIENT_ID "18d4ac514b6a4e9891aa4d88d35b9c6f"
+#define SPOTIFY_REFRESH_TOKEN "your_spotify_refresh_token"
+
+// How often the ESP32 checks Spotify for changed playback.
+#define SPOTIFY_POLL_MS 5000
+
+// SD card chip select used by this board.
+#define SD_CS 5

@@ -18,6 +18,7 @@ The [example_codes](./example_codes) folder, you can find a list of example prog
 6. [Image_Display](./example_codes/Image_Display/image_display): Displays a BMP image on the screen.
    1. Use [This converter](https://image.online-convert.com/convert-to-bmp) to turn your image into a 480x320 BMP image.
    2. Save it as "image.bmp" on your SD card. 
+7. [Spotify_Now_Playing_Display](./example_codes/Spotify_Now_Playing_Display): Connects to Wi-Fi, reads your Spotify currently playing song, and displays album art plus track details.
 
 ### WiFi_Time_Display config
 - Copy `.env.example` to `.env` for local Wi-Fi values. `.env` is ignored by Git.
@@ -38,6 +39,16 @@ The [example_codes](./example_codes) folder, you can find a list of example prog
 - The browser login defaults to username `admin` and password `esp32`. Change `FILE_SERVER_USERNAME` and `FILE_SERVER_PASSWORD` in `wifi_config.h` before using it around other people.
 - After Wi-Fi connects, the display shows a URL like `http://10.x.x.x`. Open that URL from a device on the same Wi-Fi network to browse, download, upload, create folders, and delete SD-card files.
 - If `UMBC Visitor` blocks device-to-device access or requires a captive portal/MAC approval, the ESP32 may connect but the URL may not be reachable from your laptop or phone. In that case, use a phone hotspot or ask UMBC DoIT whether the ESP32 MAC address can be approved.
+
+### Spotify_Now_Playing_Display config
+- Install Arduino libraries: `TFT_eSPI`, `ArduinoJson`, and `TJpg_Decoder`.
+- In the Spotify Developer Dashboard, create an app and add this redirect URI exactly: `http://127.0.0.1:8080/callback`.
+- Run `python example_codes/Spotify_Now_Playing_Display/tools/spotify_pkce_helper.py YOUR_SPOTIFY_CLIENT_ID` and log in with Spotify.
+- Copy `example_codes/Spotify_Now_Playing_Display/spotify_config.h.example` to `example_codes/Spotify_Now_Playing_Display/spotify_config.h`.
+- Paste the generated `SPOTIFY_CLIENT_ID` and `SPOTIFY_REFRESH_TOKEN` into `spotify_config.h`, then set your Wi-Fi values.
+- Flash `example_codes/Spotify_Now_Playing_Display/Spotify_Now_Playing_Display.ino`.
+- The sketch uses `SD.begin(5)` to cache the current album art at `/spotify_art.jpg`; if SD init fails, the song text still works but album art shows a placeholder.
+- This example is for a personal display project. It reads currently playing Spotify metadata over Wi-Fi and does not use Bluetooth audio or playback controls.
 
 ## Setup:
 ### Library installation:
