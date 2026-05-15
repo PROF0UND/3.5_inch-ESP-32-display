@@ -1,0 +1,14 @@
+// Optional local Arduino config.
+// Copy this file to wifi_config.h, edit the values, and keep wifi_config.h out of Git.
+// This weather example uses Open-Meteo, which does not require an API key.
+
+#define WIFI_SSID "UMBC Visitor"
+#define WIFI_PASSWORD ""
+#define TIMEZONE "EST5EDT,M3.2.0/2,M11.1.0/2"
+
+// Replace these with your own coordinates before flashing.
+// Keep your edited wifi_config.h private so your location is not committed.
+#define WEATHER_LATITUDE 0.0000
+#define WEATHER_LONGITUDE 0.0000
+#define WEATHER_LOCATION_NAME "My Location"
+#define WEATHER_USE_FAHRENHEIT true

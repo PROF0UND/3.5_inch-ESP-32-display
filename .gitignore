@@ -3,4 +3,5 @@
 
 # Local Arduino credentials/config generated from .env values.
 example_codes/WiFi_Time_Display/wifi_config.h
+example_codes/WiFi_Time_Weather_Display/wifi_config.h
 example_codes/SD_Web_File_Server/wifi_config.h

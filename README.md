@@ -13,8 +13,9 @@ The [example_codes](./example_codes) folder, you can find a list of example prog
 1. [Bouncing ball](./example_codes/Bouncing_ball): Creates a red bouncing ball that goes around the screen.
 2. [SD_card_file_explorer](./example_codes/SD_card_file_explorer): Explore the files how have on the connected SD card!
 3. [WiFi_Time_Display](./example_codes/WiFi_Time_Display): Connects to Wi-Fi, syncs time with NTP, and displays a live clock on the screen.
-4. [SD_Web_File_Server](./example_codes/SD_Web_File_Server): Hosts a small browser file manager for the SD card over Wi-Fi.
-5. [Image_Display](./example_codes/Image_Display/image_display): Displays a BMP image on the screen.
+4. [WiFi_Time_Weather_Display](./example_codes/WiFi_Time_Weather_Display): Connects to Wi-Fi, syncs time with NTP, and displays a live clock plus current weather from Open-Meteo.
+5. [SD_Web_File_Server](./example_codes/SD_Web_File_Server): Hosts a small browser file manager for the SD card over Wi-Fi.
+6. [Image_Display](./example_codes/Image_Display/image_display): Displays a BMP image on the screen.
    1. Use [This converter](https://image.online-convert.com/convert-to-bmp) to turn your image into a 480x320 BMP image.
    2. Save it as "image.bmp" on your SD card. 
 
@@ -22,6 +23,13 @@ The [example_codes](./example_codes) folder, you can find a list of example prog
 - Copy `.env.example` to `.env` for local Wi-Fi values. `.env` is ignored by Git.
 - Arduino IDE does not automatically load `.env` files. To use local values at compile time, copy `example_codes/WiFi_Time_Display/wifi_config.h.example` to `example_codes/WiFi_Time_Display/wifi_config.h` and edit that file.
 - `wifi_config.h` is ignored by Git, so private hotspot passwords stay out of GitHub.
+
+### WiFi_Time_Weather_Display config
+- Flash `example_codes/WiFi_Time_Weather_Display/WiFi_Time_Weather_Display.ino`.
+- The sketch uses Open-Meteo for current weather, so no API key is needed.
+- To set your weather location, copy `example_codes/WiFi_Time_Weather_Display/wifi_config.h.example` to `example_codes/WiFi_Time_Weather_Display/wifi_config.h` and edit `WEATHER_LATITUDE`, `WEATHER_LONGITUDE`, and `WEATHER_LOCATION_NAME`. The example uses placeholder coordinates so your location is not committed.
+- It refreshes the clock every second and weather every 10 minutes.
+- If the weather stays unavailable on `UMBC Visitor`, the ESP32 may be behind a captive portal or need MAC approval for internet access.
 
 ### SD_Web_File_Server
 - Flash `example_codes/SD_Web_File_Server/SD_Web_File_Server.ino`.
