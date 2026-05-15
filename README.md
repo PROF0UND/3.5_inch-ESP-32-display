@@ -27,6 +27,7 @@ The [example_codes](./example_codes) folder, you can find a list of example prog
 - Flash `example_codes/SD_Web_File_Server/SD_Web_File_Server.ino`.
 - The sketch uses the same SD card setup as the other examples: `SD.begin(5)`.
 - By default it connects to `UMBC Visitor` with no password. To use a different network, copy `example_codes/SD_Web_File_Server/wifi_config.h.example` to `example_codes/SD_Web_File_Server/wifi_config.h` and edit it.
+- The browser login defaults to username `admin` and password `esp32`. Change `FILE_SERVER_USERNAME` and `FILE_SERVER_PASSWORD` in `wifi_config.h` before using it around other people.
 - After Wi-Fi connects, the display shows a URL like `http://10.x.x.x`. Open that URL from a device on the same Wi-Fi network to browse, download, upload, create folders, and delete SD-card files.
 - If `UMBC Visitor` blocks device-to-device access or requires a captive portal/MAC approval, the ESP32 may connect but the URL may not be reachable from your laptop or phone. In that case, use a phone hotspot or ask UMBC DoIT whether the ESP32 MAC address can be approved.
 

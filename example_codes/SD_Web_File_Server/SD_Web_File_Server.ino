@@ -18,6 +18,14 @@
 #define WIFI_PASSWORD ""
 #endif
 
+#ifndef FILE_SERVER_USERNAME
+#define FILE_SERVER_USERNAME "admin"
+#endif
+
+#ifndef FILE_SERVER_PASSWORD
+#define FILE_SERVER_PASSWORD "esp32"
+#endif
+
 // ====== USER SETTINGS ======
 #define SD_CS 5
 // ===========================
@@ -26,10 +34,12 @@ TFT_eSPI tft = TFT_eSPI();
 WebServer server(80);
 File uploadFile;
 String uploadDir = "/";
+String sessionToken;
 
 const int SCREEN_W = 480;
 const int SCREEN_H = 320;
 const unsigned long WIFI_TIMEOUT_MS = 30000;
+const char *HEADER_KEYS[] = { "Cookie" };
 
 String htmlEscape(const String &value) {
   String out;
@@ -207,10 +217,14 @@ String pageHeader(const String &title) {
             "th,td{padding:10px;border-bottom:1px solid #e6e9ef;text-align:left}"
             "th{background:#edf1f6;color:#303946;font-size:14px}"
             ".actions{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:14px 0}"
+            ".login{display:block;max-width:360px;background:white;border:1px solid #d9dee7;padding:20px;margin:34px auto}"
+            ".login label{display:block;margin:12px 0 6px;font-weight:600}"
+            ".login input{box-sizing:border-box;width:100%}"
             "input,button{font:inherit;padding:8px;border:1px solid #b8c0cc;border-radius:6px;background:white}"
             "button{background:#174f7d;color:white;border-color:#174f7d;cursor:pointer}"
             ".danger{background:#8d1f1f;border-color:#8d1f1f}"
             ".muted{color:#667080;font-size:14px}"
+            ".error{color:#8d1f1f;font-weight:600}"
             "form{display:inline}"
             "</style></head><body><header><h1>");
   html += htmlEscape(title);
@@ -222,12 +236,88 @@ String pageFooter() {
   return F("</main></body></html>");
 }
 
+String currentUrl() {
+  String url = server.uri();
+  if (server.args() > 0) {
+    url += "?";
+    for (int i = 0; i < server.args(); i++) {
+      if (i > 0) url += "&";
+      url += urlEncode(server.argName(i));
+      url += "=";
+      url += urlEncode(server.arg(i));
+    }
+  }
+  return url;
+}
+
+bool isAuthenticated() {
+  String cookie = server.header("Cookie");
+  return sessionToken.length() > 0 && cookie.indexOf("sd_session=" + sessionToken) >= 0;
+}
+
+void redirectToLogin() {
+  server.sendHeader("Location", "/login?next=" + urlEncode(currentUrl()));
+  server.send(303, "text/plain", "");
+}
+
+bool requireAuth() {
+  if (isAuthenticated()) return true;
+  redirectToLogin();
+  return false;
+}
+
 void redirectToDir(const String &dir) {
   server.sendHeader("Location", "/?dir=" + urlEncode(cleanPath(dir)));
   server.send(303, "text/plain", "");
 }
 
+void handleLoginPage(bool failed = false) {
+  String next = server.hasArg("next") ? server.arg("next") : "/";
+  String html = pageHeader("Login");
+  html += F("<form class='login' method='POST' action='/login'>");
+  if (failed) html += F("<p class='error'>Wrong username or password.</p>");
+  html += F("<input type='hidden' name='next' value='");
+  html += htmlEscape(next);
+  html += F("'><label>Username</label><input name='username' autocomplete='username'>"
+            "<label>Password</label><input name='password' type='password' autocomplete='current-password'>"
+            "<p><button type='submit'>Login</button></p></form>");
+  html += pageFooter();
+  server.send(200, "text/html", html);
+}
+
+void handleLoginGet() {
+  if (isAuthenticated()) {
+    redirectToDir("/");
+    return;
+  }
+  handleLoginPage(false);
+}
+
+void handleLoginPost() {
+  String username = server.hasArg("username") ? server.arg("username") : "";
+  String password = server.hasArg("password") ? server.arg("password") : "";
+  String next = server.hasArg("next") ? server.arg("next") : "/";
+  if (!next.startsWith("/")) next = "/";
+
+  if (username == FILE_SERVER_USERNAME && password == FILE_SERVER_PASSWORD) {
+    server.sendHeader("Set-Cookie", "sd_session=" + sessionToken + "; Path=/; HttpOnly; SameSite=Strict; Max-Age=86400");
+    server.sendHeader("Location", next.length() > 0 ? next : "/");
+    server.send(303, "text/plain", "");
+    return;
+  }
+
+  handleLoginPage(true);
+}
+
+void handleLogout() {
+  server.sendHeader("Set-Cookie", "sd_session=deleted; Path=/; Max-Age=0");
+  server.sendHeader("Location", "/login");
+  server.send(303, "text/plain", "");
+}
+
 void handleBrowse() {
+  if (!requireAuth()) return;
+
   String dirPath = cleanPath(server.hasArg("dir") ? server.arg("dir") : "/");
   File dir = SD.open(dirPath);
   if (!dir || !dir.isDirectory()) {
@@ -239,6 +329,7 @@ void handleBrowse() {
   String html = pageHeader("SD Card: " + dirPath);
   html += "<p class='muted'>ESP32 at " + WiFi.localIP().toString() + "</p>";
   html += F("<div class='actions'>");
+  html += F("<a href='/logout'>Logout</a>");
   if (dirPath != "/") {
     html += "<a href='/?dir=" + urlEncode(parentPath(dirPath)) + "'>Up one folder</a>";
   }
@@ -287,6 +378,8 @@ void handleBrowse() {
 }
 
 void handleDownload() {
+  if (!requireAuth()) return;
+
   if (!server.hasArg("path")) {
     server.send(400, "text/plain", "Missing path");
     return;
@@ -306,6 +399,8 @@ void handleDownload() {
 }
 
 void handleMkdir() {
+  if (!requireAuth()) return;
+
   String dir = cleanPath(server.hasArg("dir") ? server.arg("dir") : "/");
   String name = server.hasArg("name") ? server.arg("name") : "";
   name.trim();
@@ -330,6 +425,8 @@ void deletePath(const String &path) {
 }
 
 void handleDelete() {
+  if (!requireAuth()) return;
+
   String dir = cleanPath(server.hasArg("dir") ? server.arg("dir") : "/");
   if (server.hasArg("path")) {
     String path = cleanPath(server.arg("path"));
@@ -339,10 +436,13 @@ void handleDelete() {
 }
 
 void handleUploadDone() {
+  if (!requireAuth()) return;
   redirectToDir(uploadDir);
 }
 
 void handleUploadFile() {
+  if (!isAuthenticated()) return;
+
   HTTPUpload &upload = server.upload();
   if (upload.status == UPLOAD_FILE_START) {
     uploadDir = cleanPath(server.hasArg("dir") ? server.arg("dir") : "/");
@@ -365,6 +465,8 @@ void handleUploadFile() {
 }
 
 void handleNotFound() {
+  if (!requireAuth()) return;
+
   String path = cleanPath(server.uri());
   File file = SD.open(path, FILE_READ);
   if (file && !file.isDirectory()) {
@@ -393,7 +495,12 @@ void setup() {
     return;
   }
 
+  sessionToken = String((uint32_t)ESP.getEfuseMac(), HEX) + String(millis(), HEX);
+  server.collectHeaders(HEADER_KEYS, 1);
   server.on("/", HTTP_GET, handleBrowse);
+  server.on("/login", HTTP_GET, handleLoginGet);
+  server.on("/login", HTTP_POST, handleLoginPost);
+  server.on("/logout", HTTP_GET, handleLogout);
   server.on("/download", HTTP_GET, handleDownload);
   server.on("/mkdir", HTTP_POST, handleMkdir);
   server.on("/delete", HTTP_POST, handleDelete);

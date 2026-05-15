@@ -5,3 +5,7 @@
 
 #define WIFI_SSID "UMBC Visitor"
 #define WIFI_PASSWORD ""
+
+// Browser login for the SD-card file explorer.
+#define FILE_SERVER_USERNAME "admin"
+#define FILE_SERVER_PASSWORD "esp32"
