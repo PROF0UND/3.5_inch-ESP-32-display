@@ -2,6 +2,7 @@
 *.local
 __pycache__/
 *.pyc
+.tmp_ccleste/
 
 # Local Arduino credentials/config generated from .env values.
 example_codes/WiFi_Time_Display/wifi_config.h

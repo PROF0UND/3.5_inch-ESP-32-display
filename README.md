@@ -19,6 +19,7 @@ The [example_codes](./example_codes) folder, you can find a list of example prog
    1. Use [This converter](https://image.online-convert.com/convert-to-bmp) to turn your image into a 480x320 BMP image.
    2. Save it as "image.bmp" on your SD card. 
 7. [Spotify_Now_Playing_Display](./example_codes/Spotify_Now_Playing_Display): Connects to Wi-Fi, reads your Spotify currently playing song, and displays album art plus track details.
+8. [Celeste_Classic_ESP32](./example_codes/Celeste_Classic_ESP32): Runs a silent, touch-controlled Celeste Classic port. Copy the example's `data/gfx.bmp` and `data/font.bmp` to `/celeste` on the SD card before flashing.
 
 ### WiFi_Time_Display config
 - Copy `.env.example` to `.env` for local Wi-Fi values. `.env` is ignored by Git.
