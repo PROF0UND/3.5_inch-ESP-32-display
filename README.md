@@ -48,6 +48,7 @@ The [example_codes](./example_codes) folder, you can find a list of example prog
 - Paste the generated `SPOTIFY_CLIENT_ID` and `SPOTIFY_REFRESH_TOKEN` into `spotify_config.h`, then set your Wi-Fi values.
 - Flash `example_codes/Spotify_Now_Playing_Display/Spotify_Now_Playing_Display.ino`.
 - The sketch uses `SD.begin(5)` to cache the current album art at `/spotify_art.jpg`; if SD init fails, the song text still works but album art shows a placeholder.
+- Spotify may rotate refresh tokens. The sketch saves any rotated refresh token in ESP32 flash so it survives restarts. If you need to force a new token from `spotify_config.h`, set `SPOTIFY_RESET_SAVED_REFRESH_TOKEN` to `true`, upload once, then set it back to `false`.
 - This example is for a personal display project. It reads currently playing Spotify metadata over Wi-Fi and does not use Bluetooth audio or playback controls.
 
 ## Setup:

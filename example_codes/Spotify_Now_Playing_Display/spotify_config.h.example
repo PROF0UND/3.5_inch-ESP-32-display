@@ -8,7 +8,7 @@
 #define WIFI_SSID "UMBC Visitor"
 #define WIFI_PASSWORD ""
 
-#define SPOTIFY_CLIENT_ID "18d4ac514b6a4e9891aa4d88d35b9c6f"
+#define SPOTIFY_CLIENT_ID "YOUR_KEY"
 #define SPOTIFY_REFRESH_TOKEN "your_spotify_refresh_token"
 
 // How often the ESP32 checks Spotify for changed playback.
@@ -16,3 +16,7 @@
 
 // SD card chip select used by this board.
 #define SD_CS 5
+
+// Set to true for one upload if you need to discard the token saved in ESP32 flash.
+// Set it back to false after the display successfully starts.
+#define SPOTIFY_RESET_SAVED_REFRESH_TOKEN false

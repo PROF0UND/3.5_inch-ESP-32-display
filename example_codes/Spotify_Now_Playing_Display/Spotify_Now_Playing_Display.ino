@@ -6,6 +6,7 @@
 #include <ArduinoJson.h>
 #include <TJpg_Decoder.h>
 #include <SD.h>
+#include <Preferences.h>
 #include <string.h>
 
 #if __has_include("spotify_config.h")
@@ -36,9 +37,14 @@
 #define SD_CS 5
 #endif
 
+#ifndef SPOTIFY_RESET_SAVED_REFRESH_TOKEN
+#define SPOTIFY_RESET_SAVED_REFRESH_TOKEN false
+#endif
+
 TFT_eSPI tft = TFT_eSPI();
 TFT_eSprite infoSprite = TFT_eSprite(&tft);
 TFT_eSprite statusSprite = TFT_eSprite(&tft);
+Preferences preferences;
 
 const int SCREEN_W = 480;
 const int SCREEN_H = 320;
@@ -70,6 +76,7 @@ const char *CURRENTLY_PLAYING_URL = "https://api.spotify.com/v1/me/player/curren
 const char *ART_PATH = "/spotify_art.jpg";
 
 String accessToken = "";
+String refreshToken = "";
 String currentTrackId = "";
 String currentArtUrl = "";
 String lastTitle = "";
@@ -151,12 +158,22 @@ String formatTime(int ms) {
 }
 
 void initUiSprites() {
-  infoSprite.setColorDepth(16);
-  statusSprite.setColorDepth(16);
+  if (uiSpritesReady) {
+    return;
+  }
+
+  Serial.print("Free heap before UI sprites: ");
+  Serial.println(ESP.getFreeHeap());
+
+  infoSprite.setColorDepth(8);
+  statusSprite.setColorDepth(8);
   uiSpritesReady = infoSprite.createSprite(INFO_W, INFO_H) != nullptr;
   uiSpritesReady = (statusSprite.createSprite(SCREEN_W, STATUS_H) != nullptr) && uiSpritesReady;
   if (!uiSpritesReady) {
     Serial.println("Could not allocate UI sprites. Falling back to direct drawing.");
+  } else {
+    Serial.print("Free heap after UI sprites: ");
+    Serial.println(ESP.getFreeHeap());
   }
 }
 
@@ -216,12 +233,15 @@ bool connectToWiFi() {
 
   Serial.println();
   Serial.println("ESP32 Spotify Now Playing Display");
+
+  WiFi.mode(WIFI_STA);
+  WiFi.setSleep(false);
+
   Serial.print("MAC address: ");
   Serial.println(WiFi.macAddress());
   Serial.print("Connecting to SSID: ");
   Serial.println(WIFI_SSID);
 
-  WiFi.mode(WIFI_STA);
   WiFi.disconnect(true);
   delay(500);
 
@@ -264,8 +284,50 @@ bool connectToWiFi() {
   return true;
 }
 
+void loadRefreshToken() {
+  preferences.begin("spotify", false);
+
+  if (SPOTIFY_RESET_SAVED_REFRESH_TOKEN) {
+    preferences.remove("refresh");
+    Serial.println("Cleared saved Spotify refresh token from ESP32 flash.");
+  }
+
+  refreshToken = preferences.getString("refresh", "");
+  if (refreshToken.length() > 0) {
+    Serial.println("Loaded saved Spotify refresh token from ESP32 flash.");
+    return;
+  }
+
+  refreshToken = SPOTIFY_REFRESH_TOKEN;
+  Serial.println("Using Spotify refresh token from spotify_config.h.");
+}
+
+void saveRotatedRefreshToken(const String &newRefreshToken) {
+  if (newRefreshToken.length() == 0 || newRefreshToken == refreshToken) {
+    return;
+  }
+
+  refreshToken = newRefreshToken;
+  preferences.putString("refresh", refreshToken);
+  Serial.println("Saved rotated Spotify refresh token to ESP32 flash.");
+}
+
 bool refreshAccessToken() {
-  showStatusScreen("Refreshing Spotify", "Getting access token");
+  Serial.println("Refreshing Spotify access token...");
+  Serial.print("Free heap before token request: ");
+  Serial.println(ESP.getFreeHeap());
+  Serial.print("Client ID length: ");
+  Serial.println(String(SPOTIFY_CLIENT_ID).length());
+  Serial.print("Refresh token length: ");
+  Serial.println(refreshToken.length());
+
+  if (String(SPOTIFY_CLIENT_ID) == "your_spotify_client_id" ||
+      refreshToken == "your_spotify_refresh_token" ||
+      refreshToken.length() == 0) {
+    showStatusScreen("Spotify config needed", "Edit spotify_config.h");
+    Serial.println("Spotify config still has placeholder values.");
+    return false;
+  }
 
   WiFiClientSecure client;
   client.setInsecure();
@@ -281,7 +343,7 @@ bool refreshAccessToken() {
   http.addHeader("Content-Type", "application/x-www-form-urlencoded");
 
   String body = "grant_type=refresh_token";
-  body += "&refresh_token=" + urlEncode(SPOTIFY_REFRESH_TOKEN);
+  body += "&refresh_token=" + urlEncode(refreshToken);
   body += "&client_id=" + urlEncode(SPOTIFY_CLIENT_ID);
 
   int statusCode = http.POST(body);
@@ -291,8 +353,27 @@ bool refreshAccessToken() {
   if (statusCode != HTTP_CODE_OK) {
     Serial.print("Token refresh failed. HTTP status: ");
     Serial.println(statusCode);
+    Serial.print("HTTPClient error: ");
+    Serial.println(http.errorToString(statusCode));
     Serial.println(payload);
-    drawStatus("Spotify token refresh failed", TFT_RED);
+
+    String displayMessage = "Token HTTP " + String(statusCode);
+    DynamicJsonDocument errorDoc(1024);
+    if (deserializeJson(errorDoc, payload) == DeserializationError::Ok) {
+      String spotifyError = errorDoc["error"] | "";
+      String spotifyDescription = errorDoc["error_description"] | "";
+      if (spotifyError.length() > 0) {
+        displayMessage += ": " + spotifyError;
+        Serial.print("Spotify error: ");
+        Serial.println(spotifyError);
+      }
+      if (spotifyDescription.length() > 0) {
+        Serial.print("Spotify description: ");
+        Serial.println(spotifyDescription);
+      }
+    }
+
+    showStatusScreen("Spotify token failed", displayMessage);
     return false;
   }
 
@@ -306,10 +387,13 @@ bool refreshAccessToken() {
   }
 
   accessToken = doc["access_token"].as<String>();
+  saveRotatedRefreshToken(doc["refresh_token"].as<String>());
   int expiresIn = doc["expires_in"] | 3600;
   tokenExpiresAt = millis() + ((unsigned long)expiresIn - 60UL) * 1000UL;
 
   Serial.println("Spotify access token refreshed.");
+  Serial.print("Free heap after token request: ");
+  Serial.println(ESP.getFreeHeap());
   return accessToken.length() > 0;
 }
 
@@ -354,6 +438,9 @@ bool fetchNowPlaying(NowPlaying &playing, bool retriedAfterRefresh = false) {
   if (!ensureAccessToken()) {
     return false;
   }
+
+  Serial.print("Free heap before currently-playing request: ");
+  Serial.println(ESP.getFreeHeap());
 
   WiFiClientSecure client;
   client.setInsecure();
@@ -695,7 +782,6 @@ void setup() {
   tft.setRotation(1);
   tft.setSwapBytes(true);
   tft.fillScreen(UI_BG);
-  initUiSprites();
   TJpgDec.setCallback(tftJpgOutput);
 
   sdReady = SD.begin(SD_CS);
@@ -707,11 +793,13 @@ void setup() {
     return;
   }
 
+  loadRefreshToken();
+
   if (!refreshAccessToken()) {
-    showStatusScreen("Spotify setup needed", "Check spotify_config.h");
     return;
   }
 
+  initUiSprites();
   drawAppBackground();
   drawAlbumPlaceholder("Spotify");
   drawStatus("Polling Spotify");
