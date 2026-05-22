@@ -1,6 +1,5 @@
 #include <Arduino.h>
 #include <SPI.h>
-#include <SD.h>
 #include <SPIFFS.h>
 #include <TFT_eSPI.h>
 #include <stdarg.h>
@@ -10,8 +9,9 @@ extern "C" {
 #include "celeste.h"
 }
 #include "tilemap.h"
+#include "gfx_data.h"
+#include "font_data.h"
 
-#define SD_CS 5
 #define CALIBRATION_FILE "/celesteTouchCal"
 
 static const int SCREEN_W = 480;
@@ -38,11 +38,11 @@ enum {
 
 TFT_eSPI tft = TFT_eSPI();
 
-static uint8_t frameBuffer[P8_W * P8_H];
-static uint8_t gfxPixels[128 * 64];
-static uint8_t fontPixels[128 * 85];
+// Packed nibble framebuffer: 2 pixels per byte = 8192 bytes instead of 16384
+static uint8_t frameBuffer[P8_W * P8_H / 2];
+
+// Single scanline buffer for display output (no drawLineB needed)
 static uint16_t drawLineA[GAME_W];
-static uint16_t drawLineB[GAME_W];
 
 static const uint8_t basePaletteRgb[16][3] = {
   {0x00, 0x00, 0x00}, {0x1d, 0x2b, 0x53}, {0x7e, 0x25, 0x53}, {0x00, 0x87, 0x51},
@@ -66,20 +66,6 @@ static uint32_t centerDownAt = 0;
 static uint32_t lastFrameAt = 0;
 static bool gameReady = false;
 
-static uint16_t read16(File &f) {
-  uint16_t v = f.read();
-  v |= (uint16_t)f.read() << 8;
-  return v;
-}
-
-static uint32_t read32(File &f) {
-  uint32_t v = f.read();
-  v |= (uint32_t)f.read() << 8;
-  v |= (uint32_t)f.read() << 16;
-  v |= (uint32_t)f.read() << 24;
-  return v;
-}
-
 static void resetPalette() {
   for (int i = 0; i < 16; i++) {
     paletteMap[i] = i;
@@ -101,80 +87,18 @@ static void showFatal(const char *line1, const char *line2 = nullptr) {
   if (line2) Serial.println(line2);
 }
 
-static uint8_t readIndexedPixel(const uint8_t *row, int depth, int x) {
-  if (depth == 8) return row[x];
-  if (depth == 4) {
-    uint8_t b = row[x / 2];
-    return (x & 1) ? (b & 0x0f) : (b >> 4);
-  }
-  if (depth == 1) {
-    uint8_t b = row[x / 8];
-    return (b & (0x80 >> (x & 7))) ? 1 : 0;
-  }
-  return 0;
-}
-
-static bool loadIndexedBmp(const char *path, uint8_t *dst, int expectedW, int expectedH) {
-  File bmp = SD.open(path, FILE_READ);
-  if (!bmp) return false;
-
-  if (read16(bmp) != 0x4d42) {
-    bmp.close();
-    return false;
-  }
-
-  (void)read32(bmp);
-  (void)read32(bmp);
-  uint32_t pixelOffset = read32(bmp);
-  uint32_t headerSize = read32(bmp);
-  int32_t width = (int32_t)read32(bmp);
-  int32_t height = (int32_t)read32(bmp);
-  uint16_t planes = read16(bmp);
-  uint16_t depth = read16(bmp);
-  uint32_t compression = read32(bmp);
-
-  if (headerSize < 40 || planes != 1 || compression != 0 ||
-      width != expectedW || abs(height) != expectedH ||
-      (depth != 1 && depth != 4 && depth != 8)) {
-    bmp.close();
-    return false;
-  }
-
-  bool bottomUp = height > 0;
-  int rowSize = ((expectedW * depth + 31) / 32) * 4;
-  uint8_t row[64];
-  if (rowSize > (int)sizeof(row)) {
-    bmp.close();
-    return false;
-  }
-
-  for (int y = 0; y < expectedH; y++) {
-    int srcY = bottomUp ? (expectedH - 1 - y) : y;
-    bmp.seek(pixelOffset + (uint32_t)srcY * rowSize);
-    if (bmp.read(row, rowSize) != rowSize) {
-      bmp.close();
-      return false;
-    }
-    for (int x = 0; x < expectedW; x++) {
-      dst[x + y * expectedW] = readIndexedPixel(row, depth, x);
-    }
-  }
-
-  bmp.close();
-  return true;
-}
-
-static bool loadAssets() {
-  return loadIndexedBmp("/celeste/gfx.bmp", gfxPixels, 128, 64) &&
-         loadIndexedBmp("/celeste/font.bmp", fontPixels, 128, 85);
-}
-
+// Packed nibble read/write
 static void putPixel(int x, int y, uint8_t color) {
-  if ((unsigned)x < P8_W && (unsigned)y < P8_H) {
-    frameBuffer[x + y * P8_W] = paletteMap[color & 0x0f];
-  }
+  if ((unsigned)x >= P8_W || (unsigned)y >= P8_H) return;
+  int idx = x + y * P8_W;
+  uint8_t mapped = paletteMap[color & 0x0f];
+  if (idx & 1)
+    frameBuffer[idx >> 1] = (frameBuffer[idx >> 1] & 0x0f) | (mapped << 4);
+  else
+    frameBuffer[idx >> 1] = (frameBuffer[idx >> 1] & 0xf0) | (mapped & 0x0f);
 }
 
+// rectFill uses putPixel (memset won't work with nibble packing)
 static void rectFill(int x0, int y0, int x1, int y1, uint8_t color) {
   if (x0 > x1) { int t = x0; x0 = x1; x1 = t; }
   if (y0 > y1) { int t = y0; y0 = y1; y1 = t; }
@@ -183,10 +107,9 @@ static void rectFill(int x0, int y0, int x1, int y1, uint8_t color) {
   x1 = constrain(x1, 0, P8_W - 1);
   y0 = constrain(y0, 0, P8_H - 1);
   y1 = constrain(y1, 0, P8_H - 1);
-  uint8_t mappedColor = paletteMap[color & 0x0f];
-  for (int y = y0; y <= y1; y++) {
-    memset(frameBuffer + y * P8_W + x0, mappedColor, x1 - x0 + 1);
-  }
+  for (int y = y0; y <= y1; y++)
+    for (int x = x0; x <= x1; x++)
+      putPixel(x, y, color);
 }
 
 static void lineDraw(int x0, int y0, int x1, int y1, uint8_t color) {
@@ -214,9 +137,10 @@ static void circFill(int cx, int cy, int r, uint8_t color) {
   }
 }
 
+// Reads from PROGMEM flash array
 static uint8_t getGfxPixel(int x, int y) {
   if ((unsigned)x >= 128 || (unsigned)y >= 64) return 0;
-  return gfxPixels[x + y * 128] & 0x0f;
+  return pgm_read_byte(&gfxPixels_P[x + y * 128]) & 0x0f;
 }
 
 static void blitTile(int tile, int x, int y, bool flipX, bool flipY, int colorOverride) {
@@ -246,7 +170,7 @@ static void printP8(const char *str, int x, int y, uint8_t color) {
     for (int yy = 0; yy < 8; yy++) {
       for (int xx = 0; xx < 8; xx++) {
         int fy = sy + yy;
-        if (fy < 85 && fontPixels[sx + xx + fy * 128]) {
+        if (fy < 85 && pgm_read_byte(&fontPixels_P[sx + xx + fy * 128])) {
           putPixel(x + xx, y + yy, color);
         }
       }
@@ -387,16 +311,20 @@ static int celesteCallback(CELESTE_P8_CALLBACK_TYPE call, ...) {
   return ret;
 }
 
+// Unpack nibbles and push each game row twice (2x scale), reusing drawLineA
 static void flushGameFrame() {
   for (int y = 0; y < P8_H; y++) {
     for (int x = 0; x < P8_W; x++) {
-      uint16_t c = basePalette565[frameBuffer[x + y * P8_W] & 0x0f];
-      drawLineA[x * 2] = c;
+      int idx = x + y * P8_W;
+      uint8_t nibble = (idx & 1)
+        ? (frameBuffer[idx >> 1] >> 4)
+        : (frameBuffer[idx >> 1] & 0x0f);
+      uint16_t c = basePalette565[nibble];
+      drawLineA[x * 2]     = c;
       drawLineA[x * 2 + 1] = c;
     }
-    memcpy(drawLineB, drawLineA, sizeof(drawLineA));
-    tft.pushImage(GAME_X, GAME_Y + y * 2, GAME_W, 1, drawLineA);
-    tft.pushImage(GAME_X, GAME_Y + y * 2 + 1, GAME_W, 1, drawLineB);
+    tft.pushImage(GAME_X, GAME_Y + y * 2,     GAME_W, 1, drawLineA);
+    tft.pushImage(GAME_X, GAME_Y + y * 2 + 1, GAME_W, 1, drawLineA);
   }
 }
 
@@ -414,13 +342,13 @@ static void drawControlButton(int x, int y, int w, int h, const char *label, uin
 
 static void drawControls() {
   tft.fillRect(0, CONTROLS_Y, SCREEN_W, CONTROLS_H, TFT_BLACK);
-  drawControlButton(0, CONTROLS_Y, 70, CONTROLS_H, "<", TFT_CYAN, buttonsState & (1 << BTN_LEFT));
-  drawControlButton(70, CONTROLS_Y, 70, CONTROLS_H / 2, "^", TFT_CYAN, buttonsState & (1 << BTN_UP));
-  drawControlButton(70, CONTROLS_Y + CONTROLS_H / 2, 70, CONTROLS_H / 2, "v", TFT_CYAN, buttonsState & (1 << BTN_DOWN));
-  drawControlButton(140, CONTROLS_Y, 70, CONTROLS_H, ">", TFT_CYAN, buttonsState & (1 << BTN_RIGHT));
-  drawControlButton(210, CONTROLS_Y, 90, CONTROLS_H, paused ? "PLAY" : "PAUSE", TFT_YELLOW, paused);
-  drawControlButton(300, CONTROLS_Y, 90, CONTROLS_H, "JUMP", TFT_GREEN, buttonsState & (1 << BTN_JUMP));
-  drawControlButton(390, CONTROLS_Y, 90, CONTROLS_H, "DASH", TFT_RED, buttonsState & (1 << BTN_DASH));
+  drawControlButton(0,   CONTROLS_Y,              70, CONTROLS_H,     "<",    TFT_CYAN,   buttonsState & (1 << BTN_LEFT));
+  drawControlButton(70,  CONTROLS_Y,              70, CONTROLS_H / 2, "^",    TFT_CYAN,   buttonsState & (1 << BTN_UP));
+  drawControlButton(70,  CONTROLS_Y + CONTROLS_H / 2, 70, CONTROLS_H / 2, "v", TFT_CYAN, buttonsState & (1 << BTN_DOWN));
+  drawControlButton(140, CONTROLS_Y,              70, CONTROLS_H,     ">",    TFT_CYAN,   buttonsState & (1 << BTN_RIGHT));
+  drawControlButton(210, CONTROLS_Y,              90, CONTROLS_H,     paused ? "PLAY" : "PAUSE", TFT_YELLOW, paused);
+  drawControlButton(300, CONTROLS_Y,              90, CONTROLS_H,     "JUMP", TFT_GREEN,  buttonsState & (1 << BTN_JUMP));
+  drawControlButton(390, CONTROLS_Y,              90, CONTROLS_H,     "DASH", TFT_RED,    buttonsState & (1 << BTN_DASH));
 }
 
 static void loadTouchCalibration() {
@@ -522,21 +450,14 @@ void setup() {
   for (int i = 0; i < 16; i++) {
     basePalette565[i] = tft.color565(basePaletteRgb[i][0], basePaletteRgb[i][1], basePaletteRgb[i][2]);
   }
+
+  for (int i = 0; i < 16; i++) {
+    uint16_t c = tft.color565(basePaletteRgb[i][0], basePaletteRgb[i][1], basePaletteRgb[i][2]);
+    basePalette565[i] = (c << 8) | (c >> 8); // swap bytes to match display
+  }
+
   resetPalette();
   loadTouchCalibration();
-
-  tft.setTextColor(TFT_WHITE, TFT_BLACK);
-  tft.setTextSize(2);
-  tft.setCursor(14, 14);
-  tft.println("Mounting SD...");
-  if (!SD.begin(SD_CS)) {
-    showFatal("SD init failed", "Copy assets to /celeste on SD");
-    return;
-  }
-  if (!loadAssets()) {
-    showFatal("Celeste assets missing", "Need /celeste/gfx.bmp and font.bmp");
-    return;
-  }
 
   tft.fillScreen(TFT_BLACK);
   drawControls();
